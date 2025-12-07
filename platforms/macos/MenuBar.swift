@@ -1,15 +1,7 @@
 import Cocoa
 import SwiftUI
 
-// MARK: - Menu Tags
-
-private enum MenuTag: Int {
-    case enabled = 100
-    case telex = 200
-    case vni = 201
-}
-
-// MARK: - Menu Bar Controller
+// MARK: - Menu Bar Controller (Apple HIG Compliant)
 
 class MenuBarController {
     private var statusItem: NSStatusItem!
@@ -22,7 +14,6 @@ class MenuBarController {
     init() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
-        // Listen for onboarding completion
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(onboardingDidComplete),
@@ -30,17 +21,14 @@ class MenuBarController {
             object: nil
         )
 
-        // Check if need onboarding
         let hasOnboarded = UserDefaults.standard.bool(forKey: SettingsKey.hasCompletedOnboarding)
         let hasPermission = AXIsProcessTrusted()
 
         if hasOnboarded && hasPermission {
-            // Normal startup
             loadSettings()
             setupUI()
             startEngine()
         } else {
-            // Show onboarding first, use defaults for UI
             setupUI()
             showOnboarding()
         }
@@ -51,12 +39,10 @@ class MenuBarController {
     private func loadSettings() {
         let defaults = UserDefaults.standard
 
-        // Enabled (default: true)
         isEnabled = defaults.object(forKey: SettingsKey.enabled) != nil
             ? defaults.bool(forKey: SettingsKey.enabled)
             : true
 
-        // Method (default: telex)
         let methodValue = defaults.integer(forKey: SettingsKey.method)
         currentMethod = InputMode(rawValue: methodValue) ?? .telex
     }
@@ -74,7 +60,6 @@ class MenuBarController {
     }
 
     @objc private func onboardingDidComplete() {
-        // Reload settings (user may have selected VNI in onboarding)
         loadSettings()
         updateStatusButton()
         updateMenu()
@@ -102,52 +87,74 @@ class MenuBarController {
         let menu = NSMenu()
 
         // Header
-        let header = NSMenuItem()
-        header.view = createHeaderView()
-        menu.addItem(header)
+        let headerItem = NSMenuItem()
+        headerItem.view = createHeaderView()
+        menu.addItem(headerItem)
+
         menu.addItem(.separator())
 
         // Enable toggle
-        let enableItem = NSMenuItem(title: "Bật GoNhanh", action: #selector(toggleEnabled), keyEquivalent: "")
+        let enableItem = NSMenuItem(
+            title: "Enable \(AppMetadata.name)",
+            action: #selector(toggleEnabled),
+            keyEquivalent: ""
+        )
         enableItem.target = self
-        enableItem.tag = MenuTag.enabled.rawValue
         enableItem.state = isEnabled ? .on : .off
+        enableItem.tag = 100
         menu.addItem(enableItem)
+
         menu.addItem(.separator())
 
-        // Method selection
-        let methodLabel = NSMenuItem(title: "Kiểu gõ:", action: nil, keyEquivalent: "")
+        // Input method section
+        let methodLabel = NSMenuItem(title: "Input Method", action: nil, keyEquivalent: "")
         methodLabel.isEnabled = false
         menu.addItem(methodLabel)
 
-        let telexItem = NSMenuItem(title: "   Telex", action: #selector(selectTelex), keyEquivalent: "t")
+        let telexItem = NSMenuItem(title: "Telex", action: #selector(selectTelex), keyEquivalent: "t")
         telexItem.keyEquivalentModifierMask = [.command, .shift]
         telexItem.target = self
-        telexItem.tag = MenuTag.telex.rawValue
+        telexItem.tag = 200
         telexItem.state = currentMethod == .telex ? .on : .off
+        telexItem.indentationLevel = 1
         menu.addItem(telexItem)
 
-        let vniItem = NSMenuItem(title: "   VNI", action: #selector(selectVNI), keyEquivalent: "v")
+        let vniItem = NSMenuItem(title: "VNI", action: #selector(selectVNI), keyEquivalent: "v")
         vniItem.keyEquivalentModifierMask = [.command, .shift]
         vniItem.target = self
-        vniItem.tag = MenuTag.vni.rawValue
+        vniItem.tag = 201
         vniItem.state = currentMethod == .vni ? .on : .off
+        vniItem.indentationLevel = 1
         menu.addItem(vniItem)
 
         menu.addItem(.separator())
 
-        // About & Help
-        let aboutItem = NSMenuItem(title: "Về \(AppMetadata.name)", action: #selector(showAbout), keyEquivalent: "")
+        // About
+        let aboutItem = NSMenuItem(
+            title: "About \(AppMetadata.name)",
+            action: #selector(showAbout),
+            keyEquivalent: ""
+        )
         aboutItem.target = self
         menu.addItem(aboutItem)
 
-        let helpItem = NSMenuItem(title: "Trợ giúp & Góp ý", action: #selector(openHelp), keyEquivalent: "?")
+        // Help
+        let helpItem = NSMenuItem(
+            title: "Help & Feedback",
+            action: #selector(openHelp),
+            keyEquivalent: "?"
+        )
         helpItem.target = self
         menu.addItem(helpItem)
 
         menu.addItem(.separator())
 
-        let quitItem = NSMenuItem(title: "Thoát", action: #selector(quit), keyEquivalent: "q")
+        // Quit
+        let quitItem = NSMenuItem(
+            title: "Quit \(AppMetadata.name)",
+            action: #selector(quit),
+            keyEquivalent: "q"
+        )
         quitItem.target = self
         menu.addItem(quitItem)
 
@@ -155,24 +162,24 @@ class MenuBarController {
     }
 
     private func createHeaderView() -> NSView {
-        let view = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 44))
+        let view = NSView(frame: NSRect(x: 0, y: 0, width: 200, height: 40))
 
         let title = NSTextField(labelWithString: AppMetadata.name)
         title.font = .systemFont(ofSize: 13, weight: .semibold)
-        title.frame = NSRect(x: 14, y: 22, width: 120, height: 16)
+        title.frame = NSRect(x: 14, y: 20, width: 120, height: 16)
         view.addSubview(title)
 
-        let status = NSTextField(labelWithString: isEnabled ? "Đang bật • \(currentMethod.name)" : "Đang tắt")
+        let status = NSTextField(labelWithString: isEnabled ? "On - \(currentMethod.name)" : "Off")
         status.font = .systemFont(ofSize: 11)
         status.textColor = isEnabled ? .systemGreen : .secondaryLabelColor
-        status.frame = NSRect(x: 14, y: 6, width: 140, height: 14)
+        status.frame = NSRect(x: 14, y: 4, width: 100, height: 14)
         view.addSubview(status)
 
         let version = NSTextField(labelWithString: "v\(AppMetadata.version)")
         version.font = .systemFont(ofSize: 10)
         version.textColor = .tertiaryLabelColor
         version.alignment = .right
-        version.frame = NSRect(x: 160, y: 22, width: 46, height: 14)
+        version.frame = NSRect(x: 140, y: 20, width: 46, height: 14)
         view.addSubview(version)
 
         return view
@@ -182,14 +189,14 @@ class MenuBarController {
         guard let menu = statusItem.menu else { return }
 
         // Update header
-        if let header = menu.items.first {
-            header.view = createHeaderView()
+        if let headerItem = menu.items.first {
+            headerItem.view = createHeaderView()
         }
 
         // Update states
-        menu.item(withTag: MenuTag.enabled.rawValue)?.state = isEnabled ? .on : .off
-        menu.item(withTag: MenuTag.telex.rawValue)?.state = currentMethod == .telex ? .on : .off
-        menu.item(withTag: MenuTag.vni.rawValue)?.state = currentMethod == .vni ? .on : .off
+        menu.item(withTag: 100)?.state = isEnabled ? .on : .off
+        menu.item(withTag: 200)?.state = currentMethod == .telex ? .on : .off
+        menu.item(withTag: 201)?.state = currentMethod == .vni ? .on : .off
     }
 
     // MARK: - Actions
@@ -223,9 +230,9 @@ class MenuBarController {
             let view = OnboardingView()
             let controller = NSHostingController(rootView: view)
             onboardingWindow = NSWindow(contentViewController: controller)
-            onboardingWindow?.title = "Chào mừng đến với \(AppMetadata.name)"
+            onboardingWindow?.title = AppMetadata.name
             onboardingWindow?.styleMask = [.titled, .closable]
-            onboardingWindow?.setContentSize(NSSize(width: 520, height: 480))
+            onboardingWindow?.setContentSize(NSSize(width: 480, height: 400))
             onboardingWindow?.center()
         }
         onboardingWindow?.makeKeyAndOrderFront(nil)
@@ -237,9 +244,9 @@ class MenuBarController {
             let view = AboutView()
             let controller = NSHostingController(rootView: view)
             aboutWindow = NSWindow(contentViewController: controller)
-            aboutWindow?.title = "Về \(AppMetadata.name)"
+            aboutWindow?.title = "About \(AppMetadata.name)"
             aboutWindow?.styleMask = [.titled, .closable]
-            aboutWindow?.setContentSize(NSSize(width: 340, height: 380))
+            aboutWindow?.setContentSize(NSSize(width: 300, height: 340))
             aboutWindow?.center()
         }
         aboutWindow?.makeKeyAndOrderFront(nil)

@@ -1,152 +1,79 @@
 import SwiftUI
 import AppKit
 
-// MARK: - About View
+// MARK: - About View (Apple HIG Compliant)
 
 struct AboutView: View {
-    @State private var isHoveringGithub = false
-    @State private var isHoveringWebsite = false
-
     var body: some View {
         VStack(spacing: 16) {
+            Spacer()
+                .frame(height: 8)
+
             // App Icon
-            Image(systemName: "keyboard.fill")
-                .font(.system(size: 50))
-                .foregroundColor(.accentColor)
-                .padding(.top, 20)
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 80, height: 80)
 
-            // App Name & Version
-            VStack(spacing: 4) {
-                Text(AppMetadata.name)
-                    .font(.system(size: 24, weight: .bold))
+            // App Name
+            Text(AppMetadata.name)
+                .font(.system(size: 18, weight: .bold))
 
-                Text("Phiên bản \(AppMetadata.version)")
-                    .font(.subheadline)
-                    .foregroundColor(.secondary)
-            }
+            // Version
+            Text("Version \(AppMetadata.version) (\(AppMetadata.buildNumber))")
+                .font(.callout)
+                .foregroundStyle(.secondary)
 
             // Tagline
             Text(AppMetadata.tagline)
-                .font(.body)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
+                .font(.callout)
+                .foregroundStyle(.secondary)
+
+            Spacer()
+                .frame(height: 8)
 
             Divider()
-                .padding(.horizontal, 30)
 
             // Author
-            VStack(spacing: 6) {
-                Text("Tác giả")
+            VStack(spacing: 4) {
+                Text("Developed by")
                     .font(.caption)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(.tertiary)
 
                 Text(AppMetadata.author)
-                    .font(.body)
+                    .font(.callout)
             }
 
             // Links
-            HStack(spacing: 20) {
-                LinkButton(
-                    title: "GitHub",
-                    icon: "chevron.left.forwardslash.chevron.right",
-                    url: AppMetadata.repository
-                )
+            HStack(spacing: 16) {
+                Link(destination: URL(string: AppMetadata.website)!) {
+                    Label("Website", systemImage: "globe")
+                        .font(.callout)
+                }
 
-                LinkButton(
-                    title: "Website",
-                    icon: "globe",
-                    url: AppMetadata.website
-                )
+                Link(destination: URL(string: AppMetadata.repository)!) {
+                    Label("GitHub", systemImage: "chevron.left.forwardslash.chevron.right")
+                        .font(.callout)
+                }
             }
-            .padding(.vertical, 8)
-
-            // Tech Stack
-            HStack(spacing: 6) {
-                TechBadge(icon: "gearshape.2.fill", text: "Rust")
-                TechBadge(icon: "swift", text: "SwiftUI")
-            }
+            .padding(.top, 4)
 
             Spacer()
 
             // Copyright
-            VStack(spacing: 4) {
-                Text(AppMetadata.copyright)
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.6))
+            Text(AppMetadata.copyright)
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
 
-                Text("License: \(AppMetadata.license)")
-                    .font(.caption2)
-                    .foregroundColor(.secondary.opacity(0.6))
-            }
-            .padding(.bottom, 16)
+            Spacer()
+                .frame(height: 8)
         }
-        .frame(width: 340, height: 380)
-    }
-}
-
-// MARK: - Link Button
-
-struct LinkButton: View {
-    let title: String
-    let icon: String
-    let url: String
-
-    @State private var isHovering = false
-
-    var body: some View {
-        Button(action: {
-            if let url = URL(string: url) {
-                NSWorkspace.shared.open(url)
-            }
-        }) {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12))
-                Text(title)
-                    .font(.system(size: 12, weight: .medium))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 6)
-                    .fill(isHovering ? Color.accentColor.opacity(0.15) : Color.gray.opacity(0.1))
-            )
-            .foregroundColor(isHovering ? .accentColor : .primary)
-        }
-        .buttonStyle(.plain)
-        .onHover { hovering in
-            isHovering = hovering
-        }
-    }
-}
-
-// MARK: - Tech Badge
-
-struct TechBadge: View {
-    let icon: String
-    let text: String
-
-    var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: icon)
-                .font(.system(size: 10))
-            Text(text)
-                .font(.system(size: 10, weight: .medium))
-        }
-        .padding(.horizontal, 8)
-        .padding(.vertical, 4)
-        .background(
-            Capsule()
-                .fill(Color.gray.opacity(0.15))
-        )
-        .foregroundColor(.secondary)
+        .padding(.horizontal, 24)
+        .frame(width: 300, height: 340)
     }
 }
 
 // MARK: - Preview
 
-struct AboutView_Previews: PreviewProvider {
-    static var previews: some View {
-        AboutView()
-    }
+#Preview {
+    AboutView()
 }
