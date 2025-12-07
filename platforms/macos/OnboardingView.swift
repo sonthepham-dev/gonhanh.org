@@ -6,6 +6,7 @@ import AppKit
 struct OnboardingView: View {
     @State private var currentPage = 0
     @State private var hasPermission = false
+    @State private var didOpenSettings = false
     @State private var selectedMode: InputMode = .telex
     @State private var permissionTimer: Timer?
 
@@ -19,7 +20,7 @@ struct OnboardingView: View {
                 case 1:
                     PermissionPage(
                         hasPermission: hasPermission,
-                        onOpenSettings: openAccessibilitySettings
+                        didOpenSettings: didOpenSettings
                     )
                 case 2:
                     SetupPage(selectedMode: $selectedMode)
@@ -71,12 +72,19 @@ struct OnboardingView: View {
             .buttonStyle(.borderedProminent)
 
         case 1:
-            Button("Khởi động lại") {
-                restartApp()
+            if hasPermission {
+                Button("Khởi động lại") {
+                    restartApp()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
+            } else {
+                Button("Mở System Settings") {
+                    openAccessibilitySettings()
+                }
+                .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
             }
-            .keyboardShortcut(.defaultAction)
-            .buttonStyle(.borderedProminent)
-            .disabled(!hasPermission)
 
         case 2:
             Button("Hoàn tất") {
@@ -93,6 +101,7 @@ struct OnboardingView: View {
     // MARK: - Actions
 
     private func openAccessibilitySettings() {
+        didOpenSettings = true
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility") {
             NSWorkspace.shared.open(url)
         }
@@ -163,7 +172,7 @@ private struct WelcomePage: View {
 
 private struct PermissionPage: View {
     let hasPermission: Bool
-    let onOpenSettings: () -> Void
+    let didOpenSettings: Bool
 
     var body: some View {
         VStack(spacing: 16) {
@@ -182,16 +191,11 @@ private struct PermissionPage: View {
                 .multilineTextAlignment(.center)
 
             VStack(alignment: .leading, spacing: 10) {
-                PermissionStep(number: 1, text: "Mở System Settings → Privacy & Security → Accessibility", isComplete: false)
+                PermissionStep(number: 1, text: "Mở System Settings → Privacy & Security → Accessibility", isComplete: didOpenSettings)
                 PermissionStep(number: 2, text: "Bật \(AppMetadata.name) trong danh sách", isComplete: hasPermission)
                 PermissionStep(number: 3, text: "Nhấn \"Khởi động lại\" để áp dụng", isComplete: false)
             }
             .padding(.top, 4)
-
-            Button(action: onOpenSettings) {
-                Label("Mở System Settings", systemImage: "gear")
-            }
-            .buttonStyle(.link)
 
             Spacer()
         }
