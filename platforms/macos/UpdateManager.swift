@@ -145,12 +145,12 @@ extension UpdateManager: URLSessionDownloadDelegate {
         let destinationURL = downloadsURL.appendingPathComponent("GoNhanh.dmg")
 
         do {
-            // Xóa file cũ nếu tồn tại
+            // Remove old file if exists
             if FileManager.default.fileExists(atPath: destinationURL.path) {
                 try FileManager.default.removeItem(at: destinationURL)
             }
 
-            // Copy thay vì move để tránh lỗi cross-volume
+            // Copy instead of move to avoid cross-volume errors
             try FileManager.default.copyItem(at: location, to: destinationURL)
 
             downloadedDMGPath = destinationURL
