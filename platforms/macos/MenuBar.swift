@@ -1,33 +1,7 @@
 import Cocoa
 import SwiftUI
 
-// MARK: - Menu State
-
-class MenuState: ObservableObject {
-    static let shared = MenuState()
-
-    @Published var isEnabled: Bool = true
-    @Published var currentMethod: InputMode = .telex
-
-    func toggle() {
-        isEnabled.toggle()
-        UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
-        RustBridge.setEnabled(isEnabled)
-        NotificationCenter.default.post(name: .menuStateChanged, object: nil)
-    }
-
-    func setMethod(_ method: InputMode) {
-        currentMethod = method
-        UserDefaults.standard.set(method.rawValue, forKey: SettingsKey.method)
-        RustBridge.setMethod(method.rawValue)
-        NotificationCenter.default.post(name: .menuStateChanged, object: nil)
-    }
-
-    func load() {
-        isEnabled = UserDefaults.standard.object(forKey: SettingsKey.enabled) as? Bool ?? true
-        currentMethod = InputMode(rawValue: UserDefaults.standard.integer(forKey: SettingsKey.method)) ?? .telex
-    }
-}
+// MARK: - Notifications
 
 extension Notification.Name {
     static let menuStateChanged = Notification.Name("menuStateChanged")
@@ -37,7 +11,7 @@ extension Notification.Name {
 // MARK: - Menu Popover
 
 struct MenuPopoverView: View {
-    @ObservedObject var state: MenuState
+    @ObservedObject var state: AppState
     let onClose: () -> Void
 
     @State private var shortcut = KeyboardShortcut.load()
@@ -167,7 +141,7 @@ class MenuBarController: NSObject, NSWindowDelegate {
     private var updateWindow: NSWindow?
     private var settingsWindow: NSWindow?
 
-    private let menuState = MenuState.shared
+    private let appState = AppState.shared
 
     override init() {
         super.init()
@@ -178,7 +152,6 @@ class MenuBarController: NSObject, NSWindowDelegate {
         updateStatusButton()
 
         if UserDefaults.standard.bool(forKey: SettingsKey.hasCompletedOnboarding) && AXIsProcessTrusted() {
-            loadSettings()
             startEngine()
         } else {
             showOnboarding()
@@ -290,7 +263,7 @@ class MenuBarController: NSObject, NSWindowDelegate {
         view.addSubview(nameLabel)
 
         let shortcut = KeyboardShortcut.load()
-        let statusText = menuState.isEnabled ? menuState.currentMethod.name : "Đã tắt"
+        let statusText = appState.isEnabled ? appState.currentMethod.name : "Đã tắt"
         let statusLabel = NSTextField(labelWithString: "\(statusText) · \(shortcut.displayParts.joined())")
         statusLabel.font = .systemFont(ofSize: 11)
         statusLabel.textColor = .secondaryLabelColor
@@ -301,8 +274,8 @@ class MenuBarController: NSObject, NSWindowDelegate {
         // Toggle switch using SwiftUI
         let toggleView = NSHostingView(rootView:
             Toggle("", isOn: Binding(
-                get: { [weak self] in self?.menuState.isEnabled ?? true },
-                set: { [weak self] _ in self?.menuState.toggle() }
+                get: { [weak self] in self?.appState.isEnabled ?? true },
+                set: { [weak self] _ in self?.appState.toggle() }
             ))
             .toggleStyle(.switch)
             .labelsHidden()
@@ -317,12 +290,12 @@ class MenuBarController: NSObject, NSWindowDelegate {
     private func updateMenu() {
         guard let menu = statusItem.menu else { return }
         menu.item(withTag: 1)?.view = createHeaderView()
-        menu.item(withTag: 10)?.state = menuState.currentMethod == .telex ? .on : .off
-        menu.item(withTag: 11)?.state = menuState.currentMethod == .vni ? .on : .off
+        menu.item(withTag: 10)?.state = appState.currentMethod == .telex ? .on : .off
+        menu.item(withTag: 11)?.state = appState.currentMethod == .vni ? .on : .off
     }
 
-    @objc private func selectTelex() { menuState.setMethod(.telex) }
-    @objc private func selectVNI() { menuState.setMethod(.vni) }
+    @objc private func selectTelex() { appState.setMethod(.telex) }
+    @objc private func selectVNI() { appState.setMethod(.vni) }
 
     @objc private func showAbout() {
         showSettings()
@@ -332,15 +305,11 @@ class MenuBarController: NSObject, NSWindowDelegate {
         }
     }
 
-    private func loadSettings() {
-        menuState.load()
-    }
-
     private func startEngine() {
         RustBridge.initialize()
         KeyboardHookManager.shared.start()
-        RustBridge.setEnabled(menuState.isEnabled)
-        RustBridge.setMethod(menuState.currentMethod.rawValue)
+        RustBridge.setEnabled(appState.isEnabled)
+        RustBridge.setMethod(appState.currentMethod.rawValue)
 
         // Sync shortcuts and excluded apps from AppState
         syncShortcutsToEngine()
@@ -369,7 +338,7 @@ class MenuBarController: NSObject, NSWindowDelegate {
     private func updateStatusButton() {
         guard let button = statusItem.button else { return }
         button.title = ""
-        button.image = createStatusIcon(text: menuState.isEnabled ? "V" : "E")
+        button.image = createStatusIcon(text: appState.isEnabled ? "V" : "E")
     }
 
     private func createStatusIcon(text: String) -> NSImage {
@@ -411,17 +380,16 @@ class MenuBarController: NSObject, NSWindowDelegate {
     // MARK: - Event Handlers
 
     @objc private func handleToggleVietnamese() {
-        menuState.toggle()
+        appState.toggle()
     }
 
     @objc private func handleMenuStateChanged() {
-        menuState.load()
+        // AppState already updated via didSet - just refresh UI
         updateStatusButton()
         updateMenu()
     }
 
     @objc private func onboardingDidComplete() {
-        loadSettings()
         updateStatusButton()
         startEngine()
         enableLaunchAtLogin()

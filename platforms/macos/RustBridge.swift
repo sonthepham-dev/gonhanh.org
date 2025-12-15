@@ -432,6 +432,11 @@ private func keyboardCallback(
     let caps = shift || flags.contains(.maskAlphaShift)
     let ctrl = flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskAlternate)
 
+    // Skip Vietnamese input for excluded apps (keystroke-level check for reliability)
+    if ExcludedAppsManager.shared.isFrontmostAppExcluded() {
+        return Unmanaged.passUnretained(event)
+    }
+
     if let (bs, chars) = RustBridge.processKey(keyCode: keyCode, caps: caps, ctrl: ctrl, shift: shift) {
         let str = String(chars)
         Log.transform(bs, str)
@@ -529,6 +534,14 @@ class ExcludedAppsManager {
         checkCurrentApp()
     }
 
+    /// Check if frontmost app is excluded (called on every keystroke for reliability)
+    func isFrontmostAppExcluded() -> Bool {
+        guard !excludedBundleIds.isEmpty,
+              let app = NSWorkspace.shared.frontmostApplication,
+              let bundleId = app.bundleIdentifier else { return false }
+        return excludedBundleIds.contains(bundleId)
+    }
+
     /// Check if current frontmost app should be excluded
     private func checkCurrentApp() {
         guard let app = NSWorkspace.shared.frontmostApplication,
@@ -546,15 +559,18 @@ class ExcludedAppsManager {
         let isExcluded = excludedBundleIds.contains(bundleId)
         if isExcluded {
             // Store current enabled state before disabling
-            wasEnabledBeforeExclusion = MenuState.shared.isEnabled
-            if MenuState.shared.isEnabled {
+            wasEnabledBeforeExclusion = AppState.shared.isEnabled
+            if AppState.shared.isEnabled {
                 RustBridge.setEnabled(false)
+                RustBridge.clearBuffer()  // Clear buffer to prevent stale state
                 Log.info("App excluded: \(bundleId) - IME disabled")
             }
         } else {
             // Restore previous state when switching to non-excluded app
             if wasEnabledBeforeExclusion {
-                RustBridge.setEnabled(MenuState.shared.isEnabled)
+                RustBridge.clearBuffer()  // Clear buffer before re-enabling
+                RustBridge.setEnabled(AppState.shared.isEnabled)
+                Log.info("App active: \(bundleId) - IME restored")
             }
         }
     }

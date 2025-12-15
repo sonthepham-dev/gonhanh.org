@@ -57,6 +57,16 @@ class AppState: ObservableObject {
         }
     }
 
+    /// Toggle Vietnamese input on/off
+    func toggle() {
+        isEnabled.toggle()
+    }
+
+    /// Set input method (Telex/VNI)
+    func setMethod(_ method: InputMode) {
+        currentMethod = method
+    }
+
     @Published var toggleShortcut: KeyboardShortcut {
         didSet {
             toggleShortcut.save()
