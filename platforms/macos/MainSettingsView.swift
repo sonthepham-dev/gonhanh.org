@@ -87,7 +87,6 @@ class AppState: ObservableObject {
 
     // Dev apps that typically don't need Vietnamese input
     private static let defaultExcludedApps: [(bundleId: String, name: String, path: String)] = [
-        ("com.apple.Terminal", "Terminal", "/System/Applications/Utilities/Terminal.app"),
         ("com.googlecode.iterm2", "iTerm", "/Applications/iTerm.app"),
         ("com.microsoft.VSCode", "Visual Studio Code", "/Applications/Visual Studio Code.app"),
         ("com.tinyapp.TablePlus", "TablePlus", "/Applications/TablePlus.app"),
@@ -95,6 +94,7 @@ class AppState: ObservableObject {
         ("com.apple.dt.Xcode", "Xcode", "/Applications/Xcode.app"),
         ("com.sequel-ace.sequel-ace", "Sequel Ace", "/Applications/Sequel Ace.app"),
         ("com.postmanlabs.mac", "Postman", "/Applications/Postman.app"),
+        ("com.apple.Terminal", "Terminal", "/System/Applications/Utilities/Terminal.app"),
         ("com.termius-dmg.mac", "Termius", "/Applications/Termius.app"),
     ]
 
