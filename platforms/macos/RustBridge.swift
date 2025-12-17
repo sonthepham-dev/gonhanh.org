@@ -556,13 +556,12 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
         "company.thebrowser.Browser",    // The Browser Company
         "company.thebrowser.Arc",        // Arc
         "company.thebrowser.Dia",        // Dia (The Browser Company)
+        "app.zen-browser.zen",           // Zen Browser
         "app.sigmaos.sigmaos",           // SigmaOS
         "com.nicholaskuecherer.Orion",   // Orion
         "com.nicholaskuecherer.Sidekick",// Sidekick
         "io.nicholaskuecherer.polypane", // Polypane
-        // Comet
-        "com.cometbrowser.Comet",        // Comet Browser
-        "app.cometbrowser.browser"       // Comet Browser (alt)
+        "ai.perplexity.comet"            // Comet (Perplexity AI)
     ]
     if browsers.contains(bundleId) && role == "AXTextField" { Log.method("sel:browser"); return (.selection, (0, 0, 0)) }
     if role == "AXTextField" && bundleId.hasPrefix("com.jetbrains") { Log.method("sel:jb"); return (.selection, (0, 0, 0)) }
