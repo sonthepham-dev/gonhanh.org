@@ -97,12 +97,7 @@ class AppState: ObservableObject {
 
     @Published var updateStatus: UpdateStatus = .idle
 
-    @Published var shortcuts: [ShortcutItem] = [
-        ShortcutItem(key: "vn", value: "Việt Nam", isEnabled: false),
-        ShortcutItem(key: "hn", value: "Hà Nội", isEnabled: false),
-        ShortcutItem(key: "hcm", value: "Hồ Chí Minh", isEnabled: false),
-        ShortcutItem(key: "tphcm", value: "Thành phố Hồ Chí Minh", isEnabled: false)
-    ]
+    @Published var shortcuts: [ShortcutItem] = []
 
     init() {
         isEnabled = UserDefaults.standard.object(forKey: SettingsKey.enabled) as? Bool ?? true
@@ -115,6 +110,20 @@ class AppState: ObservableObject {
             UserDefaults.standard.set(true, forKey: SettingsKey.smartModeEnabled)
         } else {
             isSmartModeEnabled = UserDefaults.standard.bool(forKey: SettingsKey.smartModeEnabled)
+        }
+
+        // Load shortcuts from UserDefaults (or use defaults)
+        if let data = UserDefaults.standard.data(forKey: SettingsKey.shortcuts),
+           let saved = try? JSONDecoder().decode([ShortcutItem].self, from: data) {
+            shortcuts = saved
+        } else {
+            // Default shortcuts (OFF by default)
+            shortcuts = [
+                ShortcutItem(key: "vn", value: "Việt Nam", isEnabled: false),
+                ShortcutItem(key: "hn", value: "Hà Nội", isEnabled: false),
+                ShortcutItem(key: "hcm", value: "Hồ Chí Minh", isEnabled: false),
+                ShortcutItem(key: "tphcm", value: "Thành phố Hồ Chí Minh", isEnabled: false),
+            ]
         }
 
         checkForUpdates()
@@ -148,11 +157,17 @@ class AppState: ObservableObject {
     }
 
     private func setupObservers() {
-        // Observe changes to sync to engine
+        // Observe changes to sync to engine and save to UserDefaults
         $shortcuts
             .dropFirst() // Skip initial value
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .sink { [weak self] _ in self?.syncShortcutsToEngine() }
+            .sink { [weak self] shortcuts in
+                self?.syncShortcutsToEngine()
+                // Save to UserDefaults
+                if let data = try? JSONEncoder().encode(shortcuts) {
+                    UserDefaults.standard.set(data, forKey: SettingsKey.shortcuts)
+                }
+            }
             .store(in: &cancellables)
     }
 
@@ -227,8 +242,8 @@ class AppState: ObservableObject {
 }
 
 
-struct ShortcutItem: Identifiable {
-    let id = UUID()
+struct ShortcutItem: Identifiable, Codable {
+    var id = UUID()
     var key: String
     var value: String
     var isEnabled: Bool = true
@@ -580,6 +595,11 @@ struct SettingsPageView: View {
         .contentShape(Rectangle())
         .onTapGesture { clearSelection() }
         .onAppear { DispatchQueue.main.async { clearSelection() } }
+        .onChange(of: focusedField) { newValue in
+            if let id = newValue {
+                selectedShortcutId = id
+            }
+        }
     }
 
     // MARK: - Import/Export
@@ -875,6 +895,7 @@ struct ShortcutRow: View {
             TextField("nội dung", text: $shortcut.value)
                 .font(.system(size: 13))
                 .textFieldStyle(.plain)
+                .focused(focusedField, equals: shortcut.id)
             Spacer()
             Toggle("", isOn: $shortcut.isEnabled)
                 .toggleStyle(.switch)

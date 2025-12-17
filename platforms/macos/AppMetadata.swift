@@ -73,6 +73,7 @@ enum SettingsKey {
     static let reopenSettingsAfterUpdate = "gonhanh.update.reopenSettings"
     static let smartModeEnabled = "gonhanh.smartMode.enabled"
     static let perAppModes = "gonhanh.perAppModes"
+    static let shortcuts = "gonhanh.shortcuts"
 }
 
 // MARK: - Keyboard Shortcut Model
