@@ -374,70 +374,43 @@ class KeyboardHookManager {
 // MARK: - Keyboard Callback
 
 private let kEventMarker: Int64 = 0x474E4820  // "GNH "
-private var wasModifierShortcutPressed = false  // Track modifier-only shortcut state for toggle detection
-private var currentShortcut = KeyboardShortcut.load()  // Load saved shortcut
-private var isRecordingShortcut = false  // Recording mode for shortcut capture via CGEventTap
-
-// Observer for shortcut changes
+private let kModifierMask: CGEventFlags = [.maskControl, .maskAlternate, .maskShift, .maskCommand]
+private var wasModifierShortcutPressed = false
+private var currentShortcut = KeyboardShortcut.load()
+private var isRecordingShortcut = false
+private var recordingModifiers: CGEventFlags = []
 private var shortcutObserver: NSObjectProtocol?
 
-// MARK: - Shortcut Recording (CGEventTap-based)
-
-/// Start recording shortcut via CGEventTap - captures system shortcuts like Ctrl+Space
-func startShortcutRecording() {
-    isRecordingShortcut = true
+private extension CGEventFlags {
+    var modifierCount: Int {
+        [contains(.maskControl), contains(.maskAlternate), contains(.maskShift), contains(.maskCommand)].filter { $0 }.count
+    }
 }
 
-/// Stop recording shortcut
-func stopShortcutRecording() {
-    isRecordingShortcut = false
-}
+// MARK: - Shortcut Recording
+
+func startShortcutRecording() { isRecordingShortcut = true; recordingModifiers = [] }
+func stopShortcutRecording() { isRecordingShortcut = false; recordingModifiers = [] }
 
 func setupShortcutObserver() {
-    shortcutObserver = NotificationCenter.default.addObserver(
-        forName: .shortcutChanged,
-        object: nil,
-        queue: .main
-    ) { _ in
+    shortcutObserver = NotificationCenter.default.addObserver(forName: .shortcutChanged, object: nil, queue: .main) { _ in
         currentShortcut = KeyboardShortcut.load()
         Log.info("Shortcut updated: \(currentShortcut.displayParts.joined())")
     }
 }
 
-/// Check if a key+modifier combination matches the saved toggle shortcut
 private func matchesToggleShortcut(keyCode: UInt16, flags: CGEventFlags) -> Bool {
-    // Skip modifier-only shortcuts here (handled in flagsChanged)
-    guard currentShortcut.keyCode != 0xFFFF else { return false }
-    guard keyCode == currentShortcut.keyCode else { return false }
-
-    let savedFlags = CGEventFlags(rawValue: currentShortcut.modifiers)
-
-    // Check required modifiers are present
-    if savedFlags.contains(.maskControl) && !flags.contains(.maskControl) { return false }
-    if savedFlags.contains(.maskAlternate) && !flags.contains(.maskAlternate) { return false }
-    if savedFlags.contains(.maskShift) && !flags.contains(.maskShift) { return false }
-    if savedFlags.contains(.maskCommand) && !flags.contains(.maskCommand) { return false }
-
-    // Ensure Command is NOT pressed if not required (avoid conflict with system shortcuts)
-    if !savedFlags.contains(.maskCommand) && flags.contains(.maskCommand) { return false }
-
-    return true
+    guard currentShortcut.keyCode != 0xFFFF, keyCode == currentShortcut.keyCode else { return false }
+    let saved = CGEventFlags(rawValue: currentShortcut.modifiers)
+    let required: [CGEventFlags] = [.maskControl, .maskAlternate, .maskShift, .maskCommand]
+    for mod in required where saved.contains(mod) && !flags.contains(mod) { return false }
+    return !(!saved.contains(.maskCommand) && flags.contains(.maskCommand))
 }
 
-/// Check if current modifier flags match a modifier-only shortcut
 private func matchesModifierOnlyShortcut(flags: CGEventFlags) -> Bool {
-    // Only for modifier-only shortcuts (keyCode = 0xFFFF)
     guard currentShortcut.keyCode == 0xFFFF else { return false }
-
-    let savedFlags = CGEventFlags(rawValue: currentShortcut.modifiers)
-
-    // Check exact modifier match
-    let ctrl = savedFlags.contains(.maskControl) == flags.contains(.maskControl)
-    let alt = savedFlags.contains(.maskAlternate) == flags.contains(.maskAlternate)
-    let shift = savedFlags.contains(.maskShift) == flags.contains(.maskShift)
-    let cmd = savedFlags.contains(.maskCommand) == flags.contains(.maskCommand)
-
-    return ctrl && alt && shift && cmd
+    let saved = CGEventFlags(rawValue: currentShortcut.modifiers)
+    return flags.intersection(kModifierMask) == saved.intersection(kModifierMask)
 }
 
 private func keyboardCallback(
@@ -451,45 +424,36 @@ private func keyboardCallback(
 
     let flags = event.flags
 
-    // MARK: Shortcut Recording Mode - capture via CGEventTap to override system shortcuts
+    // MARK: Shortcut Recording Mode
     if isRecordingShortcut {
         let keyCode = UInt16(event.getIntegerValueField(.keyboardEventKeycode))
+        let mods = flags.intersection(kModifierMask)
 
-        // ESC cancels recording
-        if keyCode == 0x35 {
-            isRecordingShortcut = false
-            DispatchQueue.main.async {
-                NotificationCenter.default.post(name: .shortcutRecordingCancelled, object: nil)
-            }
+        // ESC cancels
+        if type == .keyDown && keyCode == 0x35 {
+            stopShortcutRecording()
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .shortcutRecordingCancelled, object: nil) }
             return nil
         }
 
-        // Handle modifier-only shortcuts (require 2+ modifiers)
+        // Modifier changes: track or save modifier-only shortcut on release
         if type == .flagsChanged {
-            let mods = flags.intersection([.maskControl, .maskAlternate, .maskShift, .maskCommand])
-            let count = [mods.contains(.maskControl), mods.contains(.maskAlternate),
-                         mods.contains(.maskShift), mods.contains(.maskCommand)].filter { $0 }.count
-            if count >= 2 {
-                let captured = KeyboardShortcut(keyCode: 0xFFFF, modifiers: mods.rawValue)
-                isRecordingShortcut = false
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .shortcutRecorded, object: captured)
-                }
+            if mods.isEmpty && recordingModifiers.modifierCount >= 2 {
+                let captured = KeyboardShortcut(keyCode: 0xFFFF, modifiers: recordingModifiers.rawValue)
+                stopShortcutRecording()
+                DispatchQueue.main.async { NotificationCenter.default.post(name: .shortcutRecorded, object: captured) }
+            } else {
+                recordingModifiers = mods
             }
             return Unmanaged.passUnretained(event)
         }
 
-        // Handle key+modifier shortcuts
-        if type == .keyDown {
-            let mods = flags.intersection([.maskControl, .maskAlternate, .maskShift, .maskCommand])
-            if !mods.isEmpty {
-                let captured = KeyboardShortcut(keyCode: keyCode, modifiers: mods.rawValue)
-                isRecordingShortcut = false
-                DispatchQueue.main.async {
-                    NotificationCenter.default.post(name: .shortcutRecorded, object: captured)
-                }
-                return nil  // Consume event to prevent system from handling it
-            }
+        // Key + modifiers: save shortcut (e.g., Ctrl+Shift+N)
+        if type == .keyDown && !mods.isEmpty {
+            let captured = KeyboardShortcut(keyCode: keyCode, modifiers: mods.rawValue)
+            stopShortcutRecording()
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .shortcutRecorded, object: captured) }
+            return nil
         }
 
         return Unmanaged.passUnretained(event)
