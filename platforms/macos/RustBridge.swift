@@ -240,9 +240,9 @@ private class TextInjector {
             return false
         }
 
-        let currentText = (textValue as? String) ?? ""
+        let fullText = (textValue as? String) ?? ""
 
-        // Get selected text range (cursor position)
+        // Get selected text range (cursor position + selection length)
         var rangeValue: CFTypeRef?
         guard AXUIElementCopyAttributeValue(axEl, kAXSelectedTextRangeAttribute as CFString, &rangeValue) == .success else {
             Log.info("AX: can't read range")
@@ -257,9 +257,26 @@ private class TextInjector {
         }
 
         let cursorPos = range.location
+        let selectionLength = range.length
         guard cursorPos >= 0 else {
             Log.info("AX: invalid cursor")
             return false
+        }
+
+        // IMPORTANT: Handle autocomplete suggestions (Arc, Chrome, etc.)
+        // When autocomplete is active, the suggestion text is SELECTED (highlighted)
+        // We should only work with the text BEFORE the selection (user-typed text)
+        // Example: User types "a" → Arc shows "a|rc://chrome-urls" where "rc://..." is selected
+        //          fullText = "arc://chrome-urls", cursorPos = 1, selectionLength = 17
+        //          We only want to work with "a" (text before cursor)
+        let currentText: String
+        if selectionLength > 0 && cursorPos <= fullText.count {
+            // Has autocomplete suggestion - only take text before cursor
+            let textChars = Array(fullText)
+            currentText = String(textChars[0..<cursorPos])
+            Log.info("AX: autocomplete detected, using text before cursor: '\(currentText)'")
+        } else {
+            currentText = fullText
         }
 
         // Calculate replacement range
@@ -272,7 +289,7 @@ private class TextInjector {
             if length < 0 { length = 0 }
         }
 
-        // Build new text by replacing characters
+        // Build new text by replacing characters (no autocomplete suggestion)
         let textChars = Array(currentText)
         let startIndex = start
         let endIndex = start + length
@@ -1076,10 +1093,11 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
         return (.axDirect, (0, 0, 0))
     }
 
-    // Arc browser - test Select All method for address bar
+    // Arc browser - use AX API for address bar (same approach as Spotlight)
+    // Arc is Chromium-based with good accessibility support
     if bundleId == "company.thebrowser.Browser" && role == "AXTextField" {
-        Log.method("selAll:arc")
-        return (.selectAll, (0, 0, 0))
+        Log.method("ax:arc")
+        return (.axDirect, (0, 0, 0))
     }
 
     // Browser address bars (AXTextField with autocomplete)
