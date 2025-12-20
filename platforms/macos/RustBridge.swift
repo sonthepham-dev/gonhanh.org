@@ -828,53 +828,30 @@ private func keyboardCallback(
         return nil
     }
 
-    // Clear session buffer on Enter/Escape (submit or cancel)
+    // Clear buffer on Enter/Escape (submit or cancel)
     if keyCode == 0x24 || keyCode == 0x35 {  // Enter or Escape
         TextInjector.shared.clearSessionBuffer()
         RustBridge.clearBuffer()
         return Unmanaged.passUnretained(event)
     }
 
-    // Detect injection method once per keystroke (expensive AX query)
-    let (method, delays) = detectMethod()
-
-    // Pass through all Cmd+key shortcuts (Cmd+A, Cmd+C, Cmd+V, Cmd+X, Cmd+Z, etc.)
-    // For selectAll method: sync session buffer after text-modifying shortcuts
-    if flags.contains(.maskCommand) && !flags.contains(.maskControl) && !flags.contains(.maskAlternate) {
-
-        // Shortcuts that modify text content
-        let textModifyingKeys: Set<UInt16> = [
-            0x00,  // Cmd+A (select all)
-            0x09,  // Cmd+V (paste)
-            0x07,  // Cmd+X (cut)
-            0x06,  // Cmd+Z (undo)
-        ]
-
-        if textModifyingKeys.contains(keyCode) {
-            RustBridge.clearBuffer()
-
-            if method == .selectAll {
-                if keyCode == 0x00 {
-                    // Cmd+A: clear session buffer, let next backspace pass through to delete selection
-                    TextInjector.shared.clearSessionBuffer()
-                } else {
-                    // Cmd+V, Cmd+X, Cmd+Z: sync session buffer from field after action completes
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                        if let text = getTextFromFocusedElement() {
-                            TextInjector.shared.setSessionBuffer(text)
-                            Log.info("Session buffer synced: \(text)")
-                        } else {
-                            TextInjector.shared.clearSessionBuffer()
-                        }
-                    }
-                }
-            } else {
-                TextInjector.shared.clearSessionBuffer()
-            }
+    // Clear buffer on ANY modifier key combination (Cmd, Ctrl, Opt)
+    // This must be checked before expensive detectMethod() call
+    if flags.contains(.maskCommand) || flags.contains(.maskControl) || flags.contains(.maskAlternate) {
+        RustBridge.clearBuffer()
+        
+        // Handle special case: Cmd+Space for toggle
+        if matchesToggleShortcut(keyCode: keyCode, flags: flags) {
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .toggleVietnamese, object: nil) }
+            return nil
         }
-        // Pass through all Cmd shortcuts
+        
+        // Pass through all modifier shortcuts
         return Unmanaged.passUnretained(event)
     }
+
+    // Detect injection method once per keystroke (expensive AX query)
+    let (method, delays) = detectMethod()
 
     let shift = flags.contains(.maskShift)
     let caps = shift || flags.contains(.maskAlphaShift)

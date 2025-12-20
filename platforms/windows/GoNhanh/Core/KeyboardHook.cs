@@ -154,14 +154,10 @@ public class KeyboardHook : IDisposable
                 bool ctrl = IsKeyDown(KeyCodes.VK_CONTROL);
                 bool alt = IsKeyDown(KeyCodes.VK_MENU);
 
-                // Skip if Ctrl or Alt is pressed (shortcuts)
-                if (ctrl || alt)
+                // Clear buffer on ANY modifier key combination (Ctrl, Alt, Win)
+                if (ctrl || alt || IsKeyDown(KeyCodes.VK_LWIN) || IsKeyDown(KeyCodes.VK_RWIN))
                 {
-                    // Clear buffer on Ctrl+key combinations
-                    if (ctrl)
-                    {
-                        RustBridge.Clear();
-                    }
+                    RustBridge.Clear();
                     return CallNextHookEx(_hookId, nCode, wParam, lParam);
                 }
 
