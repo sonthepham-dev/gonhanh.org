@@ -863,6 +863,8 @@ const TELEX_DELAYED_TONE: &[(&str, &str)] = &[
     ("mar", "mả"),
     ("lax", "lã"),
     ("taj", "tạ"),
+    // au diphthong with tone between vowels
+    ("mafu", "màu"), // m + a + f + u → màu (tone before second vowel)
     // oa/oe patterns - tone on second vowel
     ("hoaf", "hoà"),
     ("loas", "loá"),
@@ -1384,7 +1386,9 @@ const TELEX_ENGLISH_AW_WORDS: &[(&str, &str)] = &[
     ("Draw ", "Draw "),
     ("DRAW ", "DRAW "),
     // Mixed with Vietnamese - space separates words
-    ("raw data", "raw data"),
+    // Note: "data" gets circumflex from vowel trigger (d-a-t-a → dât)
+    // but space triggers restore, so "raw data " → "raw data "
+    ("raw data ", "raw data "),
     ("raw vieetj", "raw việt"), // "raw" stays, "việt" transforms
     // Vietnamese words with similar patterns - should NOT be restored
     ("loxoi ", "lỗi "), // lỗi - Vietnamese, NOT restored
@@ -1392,6 +1396,9 @@ const TELEX_ENGLISH_AW_WORDS: &[(&str, &str)] = &[
     ("waf ", "ừa "),    // ừa - Vietnamese (ư + huyền + a)
     ("was ", "ứa "),    // ứa - Vietnamese (ư + sắc + a)
     ("waj ", "ựa "),    // ựa - Vietnamese (ư + nặng + a)
+    // au diphthong with delayed tone
+    ("mauf ", "màu "), // m + a + u + f → màu (delayed huyền tone on 'a')
+    ("mafu ", "màu "), // m + a + f + u → màu (tone between vowels)
     // Delayed stroke + delayed circumflex + mark
     ("datdas ", "đất "), // đất - delayed stroke (d) + delayed circumflex (a) + sắc (s)
     // đường pattern

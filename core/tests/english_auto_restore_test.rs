@@ -94,6 +94,27 @@ fn pattern2_oo_vowel_pair() {
     telex_auto_restore(&[("looks ", "looks "), ("took ", "took ")]);
 }
 
+#[test]
+fn pattern2_aa_vowel_pair() {
+    telex_auto_restore(&[
+        // Double 'a' creates circumflex â, but result is not valid Vietnamese
+        ("saas ", "saas "),  // s+a+a+s → "sâs" invalid → restore "saas"
+        ("saaas ", "saas "), // s+a+a+a+s → third 'a' reverts circumflex → "saas"
+        ("sax ", "sax "),    // s+a+x → "sã" invalid word → restore "sax"
+        ("saax ", "sax "),   // s+a+a+x → "sẫ" invalid → restore to buffer "sax"
+        // Triple 'o' with consonant
+        ("xooong ", "xoong "), // x+o+o+o+ng → triple 'o' collapses to double
+        ("booong ", "boong "), // b+o+o+o+ng → triple 'o' collapses to double
+        // Valid Vietnamese triphthongs - should NOT be restored
+        ("ngueeuf ", "nguều "), // ng+u+ê+u with huyền → valid Vietnamese (ee for ê)
+        ("ngoafo ", "ngoào "),  // ng+o+à+o - ôa is invalid, so 'o' appends raw
+        ("ngoejo ", "ngoẹo "),  // ng+o+ẹ+o - oeo triphthong with nặng → valid Vietnamese
+        // Triphthong without initial - should preserve, not apply circumflex
+        ("oeo ", "oeo "),  // o+e+o → oeo triphthong, NOT ôe
+        ("oejo ", "oẹo "), // o+e+j+o → oẹo (oeo with nặng)
+    ]);
+}
+
 // =============================================================================
 // PATTERN 3: AI VOWEL PAIR + RARE INITIAL (P)
 // P alone (not PH) is rare in native Vietnamese
@@ -151,6 +172,46 @@ fn pattern5_w_start_consonant() {
 #[test]
 fn pattern5_w_vowel_w() {
     telex_auto_restore(&[("wow ", "wow ")]);
+}
+
+#[test]
+fn pattern5_double_w_at_start() {
+    // Double 'w' at start should collapse to single 'w' when restoring
+    telex_auto_restore(&[("wwax ", "wax ")]);
+}
+
+#[test]
+fn pattern_double_vowel_after_tone() {
+    // When a vowel has a mark (huyền/sắc/etc.) and user types double DIFFERENT vowel,
+    // circumflex should NOT be applied. This prevents invalid diphthongs like "ồa", "âi", etc.
+    // Example: "tafoo" = t + à (huyền on 'a') + oo → skip circumflex → "tàoo"
+    telex_auto_restore(&[
+        // huyền (f) + different double vowel
+        ("tafoo ", "tàoo "), // t + à + oo → 'a' has mark, 'o' different → skip circumflex
+        ("tefoo ", "tèoo "), // t + è + oo → 'e' has mark, 'o' different → skip circumflex
+        ("tofaa ", "tòaa "), // t + ò + aa → 'o' has mark, 'a' different → skip circumflex
+        ("tofee ", "tòee "), // t + ò + ee → 'o' has mark, 'e' different → skip circumflex
+        ("tifaa ", "tìaa "), // t + ì + aa → 'i' has mark, 'a' different → skip circumflex
+        ("mufaa ", "mùaa "), // m + ù + aa → 'u' has mark, 'a' different → skip circumflex
+        // sắc (s) + different double vowel
+        ("tasoo ", "táoo "), // t + á + oo → 'a' has mark, 'o' different → skip circumflex
+        ("tesaa ", "téaa "), // t + é + aa → 'e' has mark, 'a' different → skip circumflex
+    ]);
+}
+
+#[test]
+fn pattern_risk_words() {
+    // Words ending with -isk/-usk pattern - should auto-restore
+    telex_auto_restore(&[
+        ("risk ", "risk "),
+        ("disk ", "disk "),
+        ("task ", "task "),
+        ("mask ", "mask "),
+        ("desk ", "desk "),
+        ("dusk ", "dusk "),
+        ("tusk ", "tusk "),
+        ("husk ", "husk "),
+    ]);
 }
 
 // =============================================================================
@@ -294,6 +355,7 @@ fn vietnamese_multi_syllable_preserved() {
         ("dduowcj ", "được "), // được (can/get)
         ("muwowjt ", "mượt "), // mượt (smooth)
         ("ddeso ", "đéo "),    // đéo (slang: no way)
+        ("ddense ", "đến "),   // đến (to come/arrive)
     ]);
 }
 
@@ -380,6 +442,9 @@ fn pattern7_vowel_modifier_vowel_with_initial() {
         ("wore ", "wore "), // W initial also triggers Pattern 5
         ("store ", "store "),
         ("score ", "score "),
+        // Short words: consonant + vowel + modifier (no final vowel)
+        ("per ", "per "),    // p + e + r → pẻ (invalid) → restore "per"
+        ("thiss ", "this "), // t + h + i + s + s → double s reverts → buffer "this" (4 chars)
     ]);
 }
 
