@@ -173,6 +173,11 @@ pub struct Engine {
     /// Breve on 'a' in open syllables (like "raw") is invalid Vietnamese
     /// We defer applying breve until a valid final consonant is typed
     pending_breve_pos: Option<usize>,
+    /// Issue #133: Pending horn position on 'u' in "uơ" pattern
+    /// When "uo" + 'w' is typed at end of syllable, only 'o' gets horn initially.
+    /// If a final consonant/vowel is added, also apply horn to 'u'.
+    /// Examples: "huow" → "huơ" (stays), "duow" + "c" → "dược" (u gets horn)
+    pending_u_horn_pos: Option<usize>,
     /// Tracks if stroke was reverted in current word (ddd → dd)
     /// When true, subsequent 'd' keys are treated as normal letters, not stroke triggers
     /// This prevents "ddddd" from oscillating between đ and dd states
@@ -215,6 +220,7 @@ impl Engine {
             word_history: WordHistory::new(),
             spaces_after_commit: 0,
             pending_breve_pos: None,
+            pending_u_horn_pos: None,
             stroke_reverted: false,
             had_mark_revert: false,
             pending_mark_revert_pop: false,
@@ -685,6 +691,17 @@ impl Engine {
                     self.last_transform = None;
                     // Mark that stroke was reverted - subsequent 'd' keys will be normal letters
                     self.stroke_reverted = true;
+                    // Fix raw_input: "ddd" typed → raw has [d,d,d] but buffer is "dd"
+                    // Remove the stroke-triggering 'd' from raw_input so restore works correctly
+                    // raw_input: [d, d, d] → [d, d] (remove middle 'd' that triggered stroke)
+                    // This ensures "didd" → "did" not "didd" on auto-restore
+                    if self.raw_input.len() >= 2 {
+                        let current = self.raw_input.pop(); // current 'd' (just added)
+                        self.raw_input.pop(); // stroke-trigger 'd' (consumed, discard)
+                        if let Some(c) = current {
+                            self.raw_input.push(c);
+                        }
+                    }
                     // Use rebuild_from_after_insert because the new 'd' was just pushed
                     // and hasn't been displayed on screen yet
                     return Some(self.rebuild_from_after_insert(pos));
@@ -708,6 +725,14 @@ impl Engine {
                     self.last_transform = None;
                     // Mark that stroke was reverted - subsequent 'd' keys will be normal letters
                     self.stroke_reverted = true;
+                    // Fix raw_input same as above
+                    if self.raw_input.len() >= 2 {
+                        let current = self.raw_input.pop();
+                        self.raw_input.pop();
+                        if let Some(c) = current {
+                            self.raw_input.push(c);
+                        }
+                    }
                     // Use rebuild_from_after_insert because the new 'd' was just pushed
                     // and hasn't been displayed on screen yet
                     return Some(self.rebuild_from_after_insert(pos));
@@ -870,8 +895,24 @@ impl Engine {
                 if let (Some(c1), Some(c2)) = (self.buf.get(pos1), self.buf.get(pos2)) {
                     // Only apply compound when BOTH vowels have no tone
                     if c1.tone == tone::NONE && c2.tone == tone::NONE {
-                        target_positions.push(pos1);
-                        target_positions.push(pos2);
+                        // Issue #133: Check if "uo" pattern is at end of syllable (no final)
+                        // If no final consonant/vowel after "uo", only apply horn to 'o'
+                        // Examples: "huow" → "huơ", "khuow" → "khuơ"
+                        // But: "duowc" → "dược", "muowif" → "mười" (both get horn)
+                        let is_uo_pattern = c1.key == keys::U && c2.key == keys::O;
+                        let has_final = self.buf.get(pos2 + 1).is_some();
+
+                        if is_uo_pattern && !has_final {
+                            // "uơ" pattern - only 'o' gets horn initially
+                            // Set pending so 'u' gets horn if final consonant/vowel is added
+                            target_positions.push(pos2);
+                            self.pending_u_horn_pos = Some(pos1);
+                        } else {
+                            // "ươ" pattern (or has final) - both get horn
+                            target_positions.push(pos1);
+                            target_positions.push(pos2);
+                            self.pending_u_horn_pos = None;
+                        }
                     }
                 }
             }
@@ -901,6 +942,22 @@ impl Engine {
                 let is_telex_circumflex = self.method == 0
                     && tone_type == ToneType::Circumflex
                     && matches!(key, keys::A | keys::E | keys::O);
+
+                // Issue #312: If any vowel already has a tone (horn/circumflex/breve),
+                // don't trigger same-vowel circumflex. The typed vowel should append raw.
+                // Example: "chưa" + "a" → "chưaa" (NOT "chưâ")
+                if is_telex_circumflex {
+                    let any_vowel_has_tone = self
+                        .buf
+                        .iter()
+                        .filter(|c| keys::is_vowel(c.key))
+                        .any(|c| c.has_tone());
+
+                    if any_vowel_has_tone {
+                        // Skip circumflex, let the vowel append as raw letter
+                        return None;
+                    }
+                }
 
                 for (i, c) in self.buf.iter().enumerate().rev() {
                     if targets.contains(&c.key) && c.tone == tone::NONE {
@@ -1744,8 +1801,12 @@ impl Engine {
             // Issue #44 (part 2): Apply deferred breve when valid final consonant is typed
             // "trawm" → after "traw" (pending breve on 'a'), typing 'm' applies breve → "trăm"
             if let Some(breve_pos) = self.pending_breve_pos {
-                // Valid final consonants that make breve valid: c, m, n, p, t
-                if matches!(key, keys::C | keys::M | keys::N | keys::P | keys::T) {
+                // Valid final consonants that make breve valid: c, k, m, n, p, t
+                // Note: k is included for ethnic minority words (Đắk Lắk)
+                if matches!(
+                    key,
+                    keys::C | keys::K | keys::M | keys::N | keys::P | keys::T
+                ) {
                     // Find and remove the breve modifier from buffer
                     // Telex uses 'w', VNI uses '8' - it should be right after 'a' at breve_pos
                     let modifier_pos = breve_pos + 1;
@@ -1783,6 +1844,24 @@ impl Engine {
                 }
                 // For other consonants (not finals, not W), keep pending_breve_pos
                 // They might be followed by more letters that complete the syllable
+            }
+
+            // Issue #133: Apply deferred horn to 'u' when final consonant/vowel is typed
+            // "duow" → "duơ" (pending on u), then "c" → apply horn to u → "dược"
+            if let Some(u_pos) = self.pending_u_horn_pos {
+                // Apply horn to 'u' at pending position
+                if let Some(c) = self.buf.get_mut(u_pos) {
+                    if c.key == keys::U && c.tone == tone::NONE {
+                        c.tone = tone::HORN;
+                        self.had_any_transform = true;
+                    }
+                }
+                self.pending_u_horn_pos = None;
+
+                // Rebuild from u position: screen has "...uơ...", buffer has "...ươ...+new_char"
+                // The new char was already pushed at line 1799 but not yet on screen
+                // Use rebuild_from_after_insert which accounts for this
+                return self.rebuild_from_after_insert(u_pos);
             }
 
             // Normalize ưo → ươ immediately when 'o' is typed after 'ư'
@@ -1849,8 +1928,17 @@ impl Engine {
             // This catches: "tex" + 't' where 'x' modifier before 't' creates English cluster
             // But preserves: "dọ" + 'd' where 'j' modifier before 'd' doesn't indicate English
             //
+            // IMPORTANT: Skip mark keys (s, f, r, x, j in Telex) because they're tone modifiers,
+            // not true consonants. User typing "đườ" + 's' wants to add sắc mark, not restore.
+            //
             // Only run if english_auto_restore is enabled (experimental feature)
-            if self.english_auto_restore && keys::is_consonant(key) && self.buf.len() >= 2 {
+            let im = input::get(self.method);
+            let is_mark_key = im.mark(key).is_some();
+            if self.english_auto_restore
+                && keys::is_consonant(key)
+                && !is_mark_key
+                && self.buf.len() >= 2
+            {
                 // Check if consonant immediately follows a marked character
                 if let Some(prev_char) = self.buf.get(self.buf.len() - 2) {
                     let prev_has_mark = prev_char.mark > 0 || prev_char.tone > 0;
@@ -2021,6 +2109,7 @@ impl Engine {
         self.last_transform = None;
         self.has_non_letter_prefix = false;
         self.pending_breve_pos = None;
+        self.pending_u_horn_pos = None;
         self.stroke_reverted = false;
         self.had_mark_revert = false;
         self.pending_mark_revert_pop = false;
@@ -2199,18 +2288,84 @@ impl Engine {
     }
 
     /// Build raw chars from raw_input for restore
+    ///
+    /// When a mark was reverted (e.g., "ss" → "s"), decide between buffer and raw_input:
+    /// - If after revert there's vowel + consonant pattern → use buffer ("dissable" → "disable")
+    /// - If after revert there's only vowels → use raw_input ("issue" → "issue")
     fn build_raw_chars(&self) -> Option<Vec<char>> {
-        let raw_chars: Vec<char> = self
-            .raw_input
-            .iter()
-            .filter_map(|&(key, caps, shift)| utils::key_to_char_ext(key, caps, shift))
-            .collect();
+        let raw_chars: Vec<char> = if self.had_mark_revert && self.should_use_buffer_for_revert() {
+            // Use buffer content which already has the correct reverted form
+            // e.g., "dissable" typed → buffer has "disable" after revert
+            self.buf.to_string_preserve_case().chars().collect()
+        } else {
+            self.raw_input
+                .iter()
+                .filter_map(|&(key, caps, shift)| utils::key_to_char_ext(key, caps, shift))
+                .collect()
+        };
 
         if raw_chars.is_empty() {
             None
         } else {
             Some(raw_chars)
         }
+    }
+
+    /// Determine if buffer should be used for restore after a mark revert
+    ///
+    /// Heuristic: Use buffer when it forms a recognizable English word pattern,
+    /// OR when raw_input looks like a typo (double letter + single vowel at end).
+    ///
+    /// Examples:
+    /// - "dissable" → buffer "disable" has dis- prefix → use buffer
+    /// - "soffa" → double ff + single vowel 'a' at end → use buffer "sofa"
+    /// - "issue" → iss + ue pattern (double + multiple chars) → use raw_input "issue"
+    /// - "error" → err + or pattern (double + multiple chars) → use raw_input "error"
+    fn should_use_buffer_for_revert(&self) -> bool {
+        let buf_str = self.buf.to_lowercase_string();
+
+        // Common English prefixes that suggest intentional revert
+        const PREFIXES: &[&str] = &[
+            "dis", "mis", "un", "re", "de", "pre", "anti", "non", "sub", "trans",
+        ];
+
+        // Common English suffixes
+        const SUFFIXES: &[&str] = &[
+            "able", "ible", "tion", "sion", "ment", "ness", "less", "ful", "ing", "ive",
+        ];
+
+        // Check if buffer matches common English word patterns
+        // Use >= to include short words like "transit" (7 chars) with "trans" (5 chars)
+        for prefix in PREFIXES {
+            if buf_str.starts_with(prefix) && buf_str.len() >= prefix.len() + 2 {
+                return true;
+            }
+        }
+
+        for suffix in SUFFIXES {
+            if buf_str.ends_with(suffix) && buf_str.len() >= suffix.len() + 2 {
+                return true;
+            }
+        }
+
+        // Check if raw_input has double 'f' followed by single vowel at end
+        // Pattern: "soffa" → double 'f' + single 'a' → likely typo, use buffer "sofa"
+        // Only apply for 'f' because:
+        // - Double 'f' + vowel at end is rare in English (no common words like "staffa")
+        // - Double 's'/'r' + vowel has many valid words (worry, sorry, carry, etc.)
+        if self.raw_input.len() >= 4 {
+            let len = self.raw_input.len();
+            let (last_key, _, _) = self.raw_input[len - 1];
+            let (second_last_key, _, _) = self.raw_input[len - 2];
+            let (third_last_key, _, _) = self.raw_input[len - 3];
+
+            // Only for double 'f' + single vowel at end
+            if keys::is_vowel(last_key) && second_last_key == keys::F && third_last_key == keys::F {
+                return true;
+            }
+        }
+
+        false
     }
 
     /// Check for English patterns in raw_input that suggest non-Vietnamese
@@ -2352,7 +2507,11 @@ impl Engine {
             if i + 1 < self.raw_input.len() {
                 let (next_key, _, _) = self.raw_input[i + 1];
                 // W is a vowel modifier in Telex, not a true consonant for this check
-                let is_true_consonant = keys::is_consonant(next_key) && next_key != keys::W;
+                // Also exclude tone modifier keys (S, F, R, X, J) - these are mark keys, not consonants
+                // when they appear after a vowel. Example: "dduowfs" has 'f' then 's', both are modifiers.
+                let is_true_consonant = keys::is_consonant(next_key)
+                    && next_key != keys::W
+                    && !tone_modifiers.contains(&next_key);
                 if is_true_consonant {
                     // Heuristic: In Vietnamese, tone modifiers + consonant is common:
                     // - nặng (j) + consonant: học, bọc, bật, cặp, đọc, etc.
@@ -2495,6 +2654,7 @@ impl Engine {
                                 next_key == keys::I || next_key == keys::Y || next_key == keys::O
                             }
                             k if k == keys::O => next_key == keys::I || next_key == keys::A,
+                            k if k == keys::E => next_key == keys::O, // eo: đeo, kẹo, mèo
                             _ => false,
                         };
                         if !is_vietnamese_pattern {
@@ -2534,6 +2694,23 @@ impl Engine {
                     if !(w_was_absorbed && vowel_count >= 2) {
                         return true;
                     }
+                }
+            }
+        }
+
+        // Pattern 6: Double vowel (oo, aa, ee) followed by K → English
+        // Vietnamese uses single vowel + breve + K (đắk = aw+k)
+        // English uses double vowel + K (looks, took, book)
+        // This distinguishes "looks" (English) from "đắk" (Vietnamese)
+        if self.raw_input.len() >= 3 {
+            for i in 0..self.raw_input.len() - 2 {
+                let (v1, _, _) = self.raw_input[i];
+                let (v2, _, _) = self.raw_input[i + 1];
+                let (next, _, _) = self.raw_input[i + 2];
+
+                // Check for double vowel (same vowel twice)
+                if keys::is_vowel(v1) && v1 == v2 && next == keys::K {
+                    return true;
                 }
             }
         }

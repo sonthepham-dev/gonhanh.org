@@ -80,24 +80,6 @@ Sau đó: **System Settings → Privacy & Security → Accessibility → Bật G
 - 🚫 **Không quảng cáo** — Không popup, không làm phiền
 - 🚫 **Không theo dõi** — Offline 100%, mã nguồn mở
 
-## 🆚 So sánh với bộ gõ khác
-
-| Vấn đề thường gặp | Bộ gõ khác | Gõ Nhanh |
-|:------------------|:----------:|:--------:|
-| Gõ tiếng Anh xen kẽ | ⚠️ Phải tắt/bật bộ gõ | ✅ Nhấn `ESC` khôi phục |
-| Dính chữ trên Chrome/Edge | ⚠️ Phải tắt autocomplete | ✅ Tự động fix |
-| Lặp chữ trên Arc browser | ❌ Conflict với history | ✅ Tự động fix |
-| Lặp chữ trên Google Docs | ⚠️ Phải bật "Sửa lỗi" | ✅ Tự động fix |
-| Nhảy chữ trên Terminal | ❌ Không hỗ trợ tốt | ✅ Hoạt động tốt |
-| Gạch chân khó chịu (macOS) | ❌ Luôn hiển thị | ✅ Không gạch chân |
-| Dùng nhiều ngôn ngữ | ⚠️ Phải tắt thủ công | ✅ Tự tắt khi dùng tiếng khác |
-| Cấu hình phức tạp | ⚠️ 10+ tùy chọn | ✅ Cài là dùng |
-| Gõ trong ô mật khẩu | ❌ Bị chặn | ✅ Hoạt động bình thường |
-
-> 💡 **Khi nào dùng bộ gõ khác?** Nếu bạn cần chuyển đổi bảng mã cũ (VNI, TCVN3...), hãy dùng UniKey/EVKey/OpenKey.
-
-Chi tiết: [Các lỗi thường gặp](docs/common-issues.md)
-
 ---
 
 ## 🔤 Auto-restore tiếng Anh
@@ -120,21 +102,21 @@ Khi gõ tiếng Anh bằng Telex, một số chữ cái bị nhận nhầm thàn
 | **W + nguyên + W** | `wow` | Pattern "wow" đặc trưng tiếng Anh |
 | **F đầu** | `file` `fix` `function` `firebase` | F không tồn tại trong tiếng Việt |
 
-### 📝 Ví dụ thực tế
+### 📝 So sánh: macOS Telex vs Gõ Nhanh
 
-```
-Gõ: "text "     → Kết quả: "text "     ✅ (x+t = pattern Anh)
-Gõ: "expect "   → Kết quả: "expect "   ✅ (x+p = pattern Anh)
-Gõ: "window "   → Kết quả: "window "   ✅ (W đầu + phụ âm)
-Gõ: "firebase " → Kết quả: "firebase " ✅ (F đầu)
-Gõ: "their "    → Kết quả: "their "    ✅ (ei + r)
-Gõ: "pair "     → Kết quả: "pair "     ✅ (P + ai + r)
-Gõ: "wow "      → Kết quả: "wow "      ✅ (W + o + W)
-
-Gõ: "mái "      → Kết quả: "mái "      ✅ (giữ tiếng Việt)
-Gõ: "cái "      → Kết quả: "cái "      ✅ (giữ tiếng Việt)
-Gõ: "được "     → Kết quả: "được "     ✅ (giữ tiếng Việt)
-```
+| Gõ | macOS Telex | Gõ Nhanh |
+|:---|:------------|:---------|
+| `text ` | `têt ` ❌ | `text ` ✅ |
+| `expect ` | `ễpct ` ❌ | `expect ` ✅ |
+| `perfect ` | `pềct ` ❌ | `perfect ` ✅ |
+| `window ` | `ưindow ` ❌ | `window ` ✅ |
+| `with ` | `ưith ` ❌ | `with ` ✅ |
+| `tesla ` | `téla ` ❌ | `tesla ` ✅ |
+| `luxury ` | `lủuy ` ❌ | `luxury ` ✅ |
+| `their ` | `thỉ ` ❌ | `their ` ✅ |
+| `wow ` | `ươ ` ❌ | `wow ` ✅ |
+| `file ` | `file ` ✅ | `file ` ✅ |
+| `fix ` | `fix ` ✅ | `fix ` ✅ |
 
 ### ⚠️ Giới hạn
 
@@ -150,6 +132,8 @@ Một số từ tiếng Anh tạo ra cấu trúc **hợp lệ tiếng Việt** n
 - Nhấn **ESC** sau khi gõ để khôi phục
 - Tắt bộ gõ tạm thời (⌘+Space hoặc click menu bar)
 
+---
+
 ## ❤️‍🔥 Động lực
 
 Tôi (**Kha Phan**) bắt đầu dự án này vì các bộ gõ hiện tại thường xuyên gặp lỗi khi tôi làm việc với **Claude Code**.
@@ -157,6 +141,8 @@ Tôi (**Kha Phan**) bắt đầu dự án này vì các bộ gõ hiện tại th
 Từ nhu cầu giải quyết vấn đề cá nhân, Gõ Nhanh được phát triển thành một sản phẩm hoàn thiện dành tặng cộng đồng. Đây cũng là sự tiếp nối và kế thừa từ **UniKey**, **OpenKey** và **EVKey**.
 
 Hy vọng Gõ Nhanh góp phần truyền cảm hứng cho cộng đồng mã nguồn mở tại Việt Nam.
+
+Nếu các bạn thấy phần mềm hữu ích có thể [ủng hộ tôi tại đây](https://github.com/sponsors/khaphanspace).
 
 ---
 

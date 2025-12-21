@@ -289,6 +289,24 @@ impl Phonology {
             };
         }
 
+        // Handle qu-initial: first vowel 'u' is part of consonant, use remaining vowels
+        // Example: "quào" → vowels [u, a, o], but with qu-initial, treat as [a, o] diphthong
+        if has_qu_initial && vowels.len() >= 2 && vowels[0].key == keys::U {
+            let remaining = &vowels[1..];
+            return match remaining.len() {
+                0 => vowels[0].pos, // Shouldn't happen, but fallback
+                1 => remaining[0].pos,
+                2 => Self::find_diphthong_position(
+                    remaining,
+                    has_final_consonant,
+                    modern,
+                    false, // No longer qu-initial for remaining vowels
+                    false,
+                ),
+                _ => Self::find_default_position(remaining),
+            };
+        }
+
         match vowels.len() {
             0 => 0,
             1 => vowels[0].pos,
@@ -523,8 +541,19 @@ impl Phonology {
                     if k1 == pattern.v1 && k2 == pattern.v2 {
                         match pattern.placement {
                             HornPlacement::Both => {
-                                result.push(pos1);
-                                result.push(pos2);
+                                // Issue #133: Check if "uo" pattern is at end of syllable (no final)
+                                // If no final consonant/vowel after "uo", only apply horn to 'o'
+                                // Examples: "huow" → "huơ", "khuow" → "khuơ"
+                                // But: "duowc" → "dược", "muowif" → "mười" (both get horn)
+                                let has_final = buffer_keys.get(pos2 + 1).is_some();
+                                if k1 == keys::U && k2 == keys::O && !has_final {
+                                    // "uơ" pattern - only 'o' gets horn
+                                    result.push(pos2);
+                                } else {
+                                    // "ươ" pattern - both get horn
+                                    result.push(pos1);
+                                    result.push(pos2);
+                                }
                             }
                             HornPlacement::First => {
                                 result.push(pos1);

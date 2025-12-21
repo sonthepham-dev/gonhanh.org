@@ -159,7 +159,7 @@ CẤU TRÚC ÂM TIẾT:
 │
 ├── C₁ = Phụ âm đầu (Initial) - TÙY CHỌN
 │   ├── Đơn: b, c, d, g, h, k, l, m, n, p, q, r, s, t, v, x (16)
-│   ├── Đôi: ch, gh, gi, kh, ng, nh, ph, qu, th, tr (10)
+│   ├── Đôi: ch, gh, gi, kh, kr, ng, nh, ph, qu, th, tr (11) - kr cho tên dân tộc
 │   └── Ba: ngh (1)
 │
 ├── G = Âm đệm (Glide) - TÙY CHỌN
@@ -169,7 +169,7 @@ CẤU TRÚC ÂM TIẾT:
 │   └── a, ă, â, e, ê, i, o, ô, ơ, u, ư, y (12)
 │
 └── C₂ = Âm cuối (Final) - TÙY CHỌN
-    ├── Phụ âm: c, m, n, p, t (5)
+    ├── Phụ âm: c, k, m, n, p, t (6) - k cho tên dân tộc
     ├── Đôi: ch, ng, nh (3)
     └── Bán nguyên âm: i, y, o, u (4)
 
@@ -194,7 +194,7 @@ parse(buffer_keys) → Syllable { initial, glide, vowel, final_c }
 │
 └── STEP 4: Match final consonant (longest-first)
     ├── 2 chars: ch, ng, nh
-    └── 1 char: c, m, n, p, t, i, y, o, u
+    └── 1 char: c, k, m, n, p, t, i, y, o, u
 
 Ref: core/src/engine/syllable.rs:50-159
 ```
