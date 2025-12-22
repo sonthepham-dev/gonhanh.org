@@ -1,6 +1,23 @@
 import SwiftUI
 import UniformTypeIdentifiers
 import Combine
+import AppKit
+
+// MARK: - Sound Manager
+
+class SoundManager {
+    static let shared = SoundManager()
+
+    private init() {}
+
+    func playToggleSound(enabled: Bool) {
+        guard AppState.shared.soundEnabled else { return }
+        // Use different system sounds for on/off states
+        // "Tink" for enabling Vietnamese, "Pop" for disabling
+        let soundName = enabled ? "Tink" : "Pop"
+        NSSound(named: NSSound.Name(soundName))?.play()
+    }
+}
 
 // MARK: - Navigation
 
@@ -37,10 +54,9 @@ class AppState: ObservableObject {
     @Published var isEnabled: Bool {
         didSet {
             RustBridge.setEnabled(isEnabled)
-            NotificationCenter.default.post(name: .menuStateChanged, object: nil)
             guard !isSilentUpdate else { return }
             UserDefaults.standard.set(isEnabled, forKey: SettingsKey.enabled)
-            if isSmartModeEnabled {
+            if perAppModeEnabled {
                 // Check if a special panel app (Spotlight, Raycast) is currently focused
                 if let activePanelApp = SpecialPanelAppDetector.getActiveSpecialPanelApp() {
                     savePerAppMode(bundleId: activePanelApp, enabled: isEnabled)
@@ -55,12 +71,11 @@ class AppState: ObservableObject {
         didSet {
             UserDefaults.standard.set(currentMethod.rawValue, forKey: SettingsKey.method)
             RustBridge.setMethod(currentMethod.rawValue)
-            NotificationCenter.default.post(name: .menuStateChanged, object: nil)
         }
     }
 
-    @Published var isSmartModeEnabled: Bool = true {
-        didSet { UserDefaults.standard.set(isSmartModeEnabled, forKey: SettingsKey.smartModeEnabled) }
+    @Published var perAppModeEnabled: Bool = true {
+        didSet { UserDefaults.standard.set(perAppModeEnabled, forKey: SettingsKey.perAppMode) }
     }
 
     @Published var autoWShortcut: Bool = true {
@@ -91,6 +106,12 @@ class AppState: ObservableObject {
         }
     }
 
+    @Published var soundEnabled: Bool = false {
+        didSet {
+            UserDefaults.standard.set(soundEnabled, forKey: SettingsKey.soundEnabled)
+        }
+    }
+
     @Published var toggleShortcut: KeyboardShortcut {
         didSet {
             toggleShortcut.save()
@@ -106,67 +127,39 @@ class AppState: ObservableObject {
     // MARK: - Init
 
     init() {
-        isEnabled = UserDefaults.standard.object(forKey: SettingsKey.enabled) as? Bool ?? true
-        currentMethod = InputMode(rawValue: UserDefaults.standard.integer(forKey: SettingsKey.method)) ?? .telex
-        toggleShortcut = KeyboardShortcut.load()
+        // Defaults are registered in App.swift's applicationDidFinishLaunching
+        // before AppState.shared is accessed
 
-        loadSmartMode()
-        loadAutoWShortcut()
-        loadEscRestore()
-        loadModernTone()
-        loadEnglishAutoRestore()
+        // Load all settings from UserDefaults
+        let defaults = UserDefaults.standard
+        isEnabled = defaults.bool(forKey: SettingsKey.enabled)
+        currentMethod = InputMode(rawValue: defaults.integer(forKey: SettingsKey.method)) ?? .telex
+        toggleShortcut = KeyboardShortcut.load()
+        perAppModeEnabled = defaults.bool(forKey: SettingsKey.perAppMode)
+        autoWShortcut = defaults.bool(forKey: SettingsKey.autoWShortcut)
+        escRestore = defaults.bool(forKey: SettingsKey.escRestore)
+        modernTone = defaults.bool(forKey: SettingsKey.modernTone)
+        englishAutoRestore = defaults.bool(forKey: SettingsKey.englishAutoRestore)
+        soundEnabled = defaults.bool(forKey: SettingsKey.soundEnabled)
+
+        // Sync settings to Rust engine
+        syncAllToEngine()
+
+        // Load complex data
         loadShortcuts()
+
+        // Setup observers and services
         setupObservers()
         setupLaunchAtLoginMonitoring()
         checkForUpdates()
     }
 
-    private func loadSmartMode() {
-        if UserDefaults.standard.object(forKey: SettingsKey.smartModeEnabled) == nil {
-            isSmartModeEnabled = true
-            UserDefaults.standard.set(true, forKey: SettingsKey.smartModeEnabled)
-        } else {
-            isSmartModeEnabled = UserDefaults.standard.bool(forKey: SettingsKey.smartModeEnabled)
-        }
-    }
-
-    private func loadAutoWShortcut() {
-        if UserDefaults.standard.object(forKey: SettingsKey.autoWShortcut) == nil {
-            autoWShortcut = true
-            UserDefaults.standard.set(true, forKey: SettingsKey.autoWShortcut)
-        } else {
-            autoWShortcut = UserDefaults.standard.bool(forKey: SettingsKey.autoWShortcut)
-        }
+    private func syncAllToEngine() {
+        RustBridge.setEnabled(isEnabled)
+        RustBridge.setMethod(currentMethod.rawValue)
         RustBridge.setSkipWShortcut(!autoWShortcut)
-    }
-
-    private func loadEscRestore() {
-        if UserDefaults.standard.object(forKey: SettingsKey.escRestore) == nil {
-            escRestore = false
-            UserDefaults.standard.set(false, forKey: SettingsKey.escRestore)
-        } else {
-            escRestore = UserDefaults.standard.bool(forKey: SettingsKey.escRestore)
-        }
         RustBridge.setEscRestore(escRestore)
-    }
-
-    private func loadModernTone() {
-        if UserDefaults.standard.object(forKey: SettingsKey.modernTone) == nil {
-            modernTone = true
-            UserDefaults.standard.set(true, forKey: SettingsKey.modernTone)
-        } else {
-            modernTone = UserDefaults.standard.bool(forKey: SettingsKey.modernTone)
-        }
         RustBridge.setModernTone(modernTone)
-    }
-
-    private func loadEnglishAutoRestore() {
-        if UserDefaults.standard.object(forKey: SettingsKey.englishAutoRestore) == nil {
-            englishAutoRestore = false
-            UserDefaults.standard.set(false, forKey: SettingsKey.englishAutoRestore)
-        } else {
-            englishAutoRestore = UserDefaults.standard.bool(forKey: SettingsKey.englishAutoRestore)
-        }
         RustBridge.setEnglishAutoRestore(englishAutoRestore)
     }
 
@@ -205,11 +198,10 @@ class AppState: ObservableObject {
     private func setupLaunchAtLoginMonitoring() {
         isLaunchAtLoginEnabled = LaunchAtLoginManager.shared.isEnabled
 
-        // Only auto-enable on first launch (when user hasn't configured yet)
-        let hasConfigured = UserDefaults.standard.bool(forKey: SettingsKey.launchAtLoginConfigured)
-        if !hasConfigured && !isLaunchAtLoginEnabled {
+        // Auto-enable unless user has explicitly disabled it
+        let userDisabled = UserDefaults.standard.bool(forKey: SettingsKey.launchAtLoginUserDisabled)
+        if !userDisabled && !isLaunchAtLoginEnabled {
             autoEnableLaunchAtLogin()
-            UserDefaults.standard.set(true, forKey: SettingsKey.launchAtLoginConfigured)
         }
 
         launchAtLoginTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] _ in
@@ -223,7 +215,7 @@ class AppState: ObservableObject {
             refreshLaunchAtLoginStatus()
             requiresManualLaunchAtLogin = false
         } catch {
-            // Auto-enable failed, user needs to manually enable
+            // Auto-enable failed, will retry on next launch
             requiresManualLaunchAtLogin = true
         }
     }
@@ -240,6 +232,8 @@ class AppState: ObservableObject {
             try LaunchAtLoginManager.shared.enable()
             refreshLaunchAtLoginStatus()
             requiresManualLaunchAtLogin = false
+            // Clear user disabled flag when user explicitly enables
+            UserDefaults.standard.set(false, forKey: SettingsKey.launchAtLoginUserDisabled)
         } catch {
             requiresManualLaunchAtLogin = true
             openLoginItemsSettings()
@@ -250,6 +244,8 @@ class AppState: ObservableObject {
         do {
             try LaunchAtLoginManager.shared.disable()
             refreshLaunchAtLoginStatus()
+            // Track that user explicitly disabled
+            UserDefaults.standard.set(true, forKey: SettingsKey.launchAtLoginUserDisabled)
         } catch {
             // If disable fails, open settings for manual action
             openLoginItemsSettings()
@@ -447,6 +443,22 @@ struct ClickableTextField: NSViewRepresentable {
             guard let textField = obj.object as? NSTextField else { return }
             parent.text = textField.stringValue
         }
+    }
+}
+
+struct DeleteButton: View {
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "trash")
+                .font(.system(size: 11))
+                .foregroundColor(hovered ? Color(NSColor.secondaryLabelColor) : Color(NSColor.tertiaryLabelColor))
+        }
+        .buttonStyle(.borderless)
+        .onHover { hovered = $0 }
+        .help("Xoá")
     }
 }
 
@@ -649,17 +661,17 @@ struct SettingsPageView: View {
                 inputMethodRow
                 if appState.currentMethod == .telex {
                     Divider().padding(.leading, 12)
-                    SettingsToggleRow("Tự chuyển W → Ư ở đầu từ",
-                                      subtitle: "Gõ 'w' đầu từ sẽ thành 'ư'",
-                                      isOn: $appState.autoWShortcut)
+                    SettingsToggleRow("Gõ W thành Ư ở đầu từ", isOn: $appState.autoWShortcut)
                 }
             }
             .cardBackground()
 
-            // Toggle shortcut section
+            // Toggle shortcut & text expansion
             VStack(spacing: 0) {
                 ShortcutRecorderRow(shortcut: $appState.toggleShortcut,
                                     isRecording: $isRecordingShortcut)
+                Divider().padding(.leading, 12)
+                shortcutsRow
             }
             .cardBackground()
 
@@ -667,29 +679,19 @@ struct SettingsPageView: View {
             VStack(spacing: 0) {
                 LaunchAtLoginToggleRow(appState: appState)
                 Divider().padding(.leading, 12)
-                SettingsToggleRow("Chuyển chế độ thông minh",
-                                  subtitle: "Tự động nhớ trạng thái Anh/Việt cho từng ứng dụng",
-                                  isOn: $appState.isSmartModeEnabled)
+                SettingsToggleRow("Tự chuyển chế độ theo ứng dụng", isOn: $appState.perAppModeEnabled)
                 Divider().padding(.leading, 12)
-                SettingsToggleRow("Đặt dấu kiểu mới (oà, uý)",
-                                  subtitle: "Thay vì kiểu cũ (òa, úy)",
-                                  isOn: $appState.modernTone)
-                Divider().padding(.leading, 12)
-                SettingsToggleRow("Gõ ESC để chuyển về tiếng Anh",
-                                  subtitle: "Nhấn ESC hoàn tác dấu tiếng Việt về ASCII",
-                                  isOn: $appState.escRestore)
-                Divider().padding(.leading, 12)
-                shortcutsRow
+                englishAutoRestoreRow
             }
             .cardBackground()
 
-            // Experimental features
+            // Sound, tone and ESC options
             VStack(spacing: 0) {
-                experimentalHeader
+                SettingsToggleRow("Âm thanh chuyển ngôn ngữ", isOn: $appState.soundEnabled)
                 Divider().padding(.leading, 12)
-                SettingsToggleRow("Tự động khôi phục từ tiếng Anh",
-                                  subtitle: "Tự nhận diện và khôi phục từ tiếng Anh khi gõ sai",
-                                  isOn: $appState.englishAutoRestore)
+                SettingsToggleRow("Đặt dấu kiểu mới (oà, uý)", isOn: $appState.modernTone)
+                Divider().padding(.leading, 12)
+                SettingsToggleRow("Gõ ESC hoàn tác dấu", isOn: $appState.escRestore)
             }
             .cardBackground()
 
@@ -710,51 +712,27 @@ struct SettingsPageView: View {
         }
     }
 
-    private var experimentalHeader: some View {
+    private var englishAutoRestoreRow: some View {
         SettingsRow {
-            HStack(spacing: 8) {
-                Text("Tính năng thử nghiệm").font(.system(size: 13, weight: .medium))
-                Text("Beta")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 2)
-                    .background(Capsule().fill(Color.orange))
+            HStack(spacing: 6) {
+                Text("Tự khôi phục từ tiếng Anh").font(.system(size: 13))
+                Link(destination: URL(string: "https://github.com/khaphanspace/gonhanh.org/issues/26")!) {
+                    Text("Beta · Góp ý")
+                        .font(.system(size: 9, weight: .medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 1)
+                        .background(Capsule().fill(Color.orange))
+                }
+                .buttonStyle(.plain)
             }
             Spacer()
-            Link(destination: URL(string: "https://github.com/khaphanspace/gonhanh.org/issues/26")!) {
-                HStack(spacing: 4) {
-                    Image(systemName: "bubble.left.and.bubble.right")
-                    Text("Góp ý")
-                }
-                .font(.system(size: 11))
-                .foregroundColor(.accentColor)
-            }
-            .buttonStyle(.plain)
+            Toggle("", isOn: $appState.englishAutoRestore).toggleStyle(.switch).labelsHidden()
         }
     }
 
     private var shortcutsRow: some View {
-        Button(action: { showShortcutsSheet = true }) {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Từ viết tắt").font(.system(size: 13)).foregroundColor(Color(NSColor.labelColor))
-                    Text(appState.shortcuts.isEmpty
-                         ? "Chưa có từ viết tắt"
-                         : "\(appState.shortcuts.filter(\.isEnabled).count)/\(appState.shortcuts.count) đang bật")
-                        .font(.system(size: 11))
-                        .foregroundColor(Color(NSColor.secondaryLabelColor))
-                }
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .medium))
-                    .foregroundColor(Color(NSColor.tertiaryLabelColor))
-            }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
+        ShortcutsRowView(appState: appState) { showShortcutsSheet = true }
     }
 }
 
@@ -787,14 +765,11 @@ struct ShortcutsSheet: View {
     }
 
     private var header: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Từ viết tắt").font(.system(size: 15, weight: .semibold))
-                Text("\(appState.shortcuts.count) mục").font(.system(size: 11)).foregroundColor(.secondary)
-            }
-            Spacer()
-            Button("Xong") { dismiss() }.keyboardShortcut(.escape, modifiers: [])
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Từ viết tắt").font(.system(size: 15, weight: .semibold))
+            Text("\(appState.shortcuts.count) mục").font(.system(size: 11)).foregroundColor(.secondary)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20)
         .padding(.vertical, 12)
     }
@@ -869,6 +844,11 @@ struct ShortcutsSheet: View {
                         .foregroundColor(item.isEnabled ? .primary : .secondary)
                         .lineLimit(1)
                 }
+
+                TableColumn("") { item in
+                    DeleteButton { deleteItem(item.id) }
+                }
+                .width(28)
             }
             .tableStyle(.inset(alternatesRowBackgrounds: true))
             .onDeleteCommand { deleteSelected() }
@@ -885,19 +865,22 @@ struct ShortcutsSheet: View {
     }
 
     private var toolbar: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 12) {
             Button(action: importShortcuts) {
-                Image(systemName: "square.and.arrow.down").frame(width: 20, height: 20)
+                Label("Nhập", systemImage: "square.and.arrow.down")
             }
-            .buttonStyle(.borderless).help("Nhập từ file")
+            .buttonStyle(.borderless)
             Button(action: exportShortcuts) {
-                Image(systemName: "square.and.arrow.up").frame(width: 20, height: 20)
+                Label("Xuất", systemImage: "square.and.arrow.up")
             }
-            .buttonStyle(.borderless).disabled(appState.shortcuts.isEmpty).help("Xuất ra file")
+            .buttonStyle(.borderless).disabled(appState.shortcuts.isEmpty)
             Spacer()
+            Button("Xong") { dismiss() }
+                .keyboardShortcut(.escape, modifiers: [])
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .font(.system(size: 12))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     private func selectItem(_ item: ShortcutItem) {
@@ -929,6 +912,12 @@ struct ShortcutsSheet: View {
         appState.shortcuts.removeAll { selectedIds.contains($0.id) }
         selectedIds.removeAll()
         clearForm()
+    }
+
+    private func deleteItem(_ id: UUID) {
+        appState.shortcuts.removeAll { $0.id == id }
+        if editingId == id { clearForm() }
+        selectedIds.remove(id)
     }
 
     private func importShortcuts() {
@@ -1043,7 +1032,7 @@ struct ShortcutRecorderRow: View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Phím tắt bật/tắt").font(.system(size: 13))
-                Text("Nhấn để thay đổi (tối thiểu 2 phím, VD: ⌘⇧)")
+                Text("Nhấn để thay đổi")
                     .font(.system(size: 11))
                     .foregroundColor(Color(NSColor.secondaryLabelColor))
             }
@@ -1102,6 +1091,37 @@ struct ShortcutRecorderRow: View {
     }
 }
 
+// MARK: - Shortcuts Row View
+
+struct ShortcutsRowView: View {
+    @ObservedObject var appState: AppState
+    let action: () -> Void
+    @State private var hovered = false
+
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Bảng gõ tắt").font(.system(size: 13))
+                Text(appState.shortcuts.isEmpty
+                     ? "Chưa có từ viết tắt"
+                     : "\(appState.shortcuts.filter(\.isEnabled).count)/\(appState.shortcuts.count) đang bật")
+                    .font(.system(size: 11))
+                    .foregroundColor(Color(NSColor.secondaryLabelColor))
+            }
+            Spacer()
+            Image(systemName: "chevron.right")
+                .font(.system(size: 12, weight: .medium))
+                .foregroundColor(Color(NSColor.tertiaryLabelColor))
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(hovered ? Color(NSColor.controlBackgroundColor).opacity(0.3) : .clear)
+        .contentShape(Rectangle())
+        .onHover { hovered = $0 }
+        .onTapGesture { action() }
+    }
+}
+
 // MARK: - Launch at Login Toggle Row
 
 struct LaunchAtLoginToggleRow: View {
@@ -1109,13 +1129,7 @@ struct LaunchAtLoginToggleRow: View {
 
     var body: some View {
         SettingsRow {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Khởi động cùng hệ thống")
-                    .font(.system(size: 13))
-                Text("Tự động chạy ứng dụng khi đăng nhập")
-                    .font(.system(size: 11))
-                    .foregroundColor(Color(NSColor.secondaryLabelColor))
-            }
+            Text("Khởi động cùng hệ thống").font(.system(size: 13))
             Spacer()
             Toggle("", isOn: Binding(
                 get: { appState.isLaunchAtLoginEnabled },

@@ -95,6 +95,11 @@ fn pattern2_oo_vowel_pair() {
 }
 
 #[test]
+fn pattern2_ee_vowel_pair() {
+    telex_auto_restore(&[("keep ", "keep ")]);
+}
+
+#[test]
 fn pattern2_aa_vowel_pair() {
     telex_auto_restore(&[
         // Double 'a' creates circumflex â, but result is not valid Vietnamese
@@ -381,6 +386,7 @@ fn vietnamese_complex_words_preserved() {
         ("dduowngf ", "đường "),   // đường (road)
         ("truwowcs ", "trước "),   // trước (before)
         ("giuwowngf ", "giường "), // giường (bed)
+        ("twong ", "tương "),      // tương (mutual) - shorthand telex
         // Words with circumflex (â, ê, ô)
         ("caaps ", "cấp "), // cấp (level)
         ("taanf ", "tần "), // tần (frequency)
