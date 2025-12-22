@@ -1138,9 +1138,12 @@ private func detectMethod() -> (InjectionMethod, (UInt32, UInt32, UInt32)) {
     // Arc/Dia browser - use AX API for address bar (same approach as Spotlight)
     // The Browser Company apps have good accessibility support
     // Dia uses AXTextArea for input fields, Arc uses AXTextField
-    let theBrowserCompany = ["company.thebrowser.Browser", "company.thebrowser.Arc", "company.thebrowser.dia"]
-    if theBrowserCompany.contains(bundleId) && (role == "AXTextField" || role == "AXTextArea") {
+    if bundleId == "company.thebrowser.Browser" && role == "AXTextField" {
         Log.method("ax:arc")
+        return (.axDirect, (0, 0, 0))
+    }
+    if bundleId == "company.thebrowser.dia" && role == "AXTextArea" {
+        Log.method("ax:dia")
         return (.axDirect, (0, 0, 0))
     }
 
